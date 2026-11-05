@@ -497,11 +497,47 @@ def register(mcp, get_token: Callable[[], str]) -> None:
             for p in items]
 
     @mcp.tool()
-    def get_playlist_tracks(playlist: str, limit: int = 100) -> list:
-        """List tracks in a playlist. `playlist` can be an ID, URI or URL."""
+    def get_playlist_tracks(playlist: str, limit: int = 2000) -> list:
+        """List tracks in a playlist in their current order, with position and added_at.
+        `playlist` can be an ID, URI or URL. Pages through the whole playlist (default up to 2000)."""
         pid = _pid(playlist)
         items = paged(lambda n, o: pl_req("GET", pid, {"limit": n, "offset": o}), limit)
-        return [i if "error" in i else _track(item_track(i)) for i in items]
+        out = []
+        for pos, i in enumerate(items, 1):
+            if "error" in i:
+                out.append(i)
+                continue
+            t = _track(item_track(i)) or {}
+            out.append({"position": pos, "added_at": i.get("added_at"), **t})
+        return out
+
+    @mcp.tool()
+    def sort_playlist_by_added(playlist: str, newest_first: bool = True, confirm: bool = False) -> dict:
+        """Reorder a playlist (custom order) by the date each track was added. Newest first by default.
+        Uses in-place moves, so added dates are kept. Requires confirm=True. Ties keep their current order."""
+        if not confirm:
+            return {"error": "Refusing to reorder without confirm=True. Ask the user first."}
+        pid = _pid(playlist)
+        items = paged(lambda n, o: pl_req("GET", pid, {"limit": n, "offset": o}), 5000)
+        if items and "error" in items[0]:
+            return items[0]
+        order = list(range(len(items)))  # current order, as indexes into items
+        key = lambda idx: items[idx].get("added_at") or ""
+        groups = {}
+        for idx in order:
+            groups.setdefault(key(idx), []).append(idx)  # same-date tracks keep current order
+        target = [idx for k in sorted(groups, reverse=newest_first) for idx in groups[k]]
+        moves = 0
+        for i, want in enumerate(target):
+            j = order.index(want)
+            if j != i:
+                res = pl_req("PUT", pid, body={"range_start": j, "insert_before": i, "range_length": 1})
+                if isinstance(res, dict) and "error" in res:
+                    return {"error": res["error"], "moves_done": moves, "stopped_at_position": i + 1}
+                order.insert(i, order.pop(j))
+                moves += 1
+        return {"ok": True, "tracks": len(items), "moves": moves,
+                "order": "newest first" if newest_first else "oldest first"}
 
     @mcp.tool()
     def get_playlist(playlist: str, market: str = "") -> dict:
