@@ -52,6 +52,7 @@ FERNET = Fernet(base64.urlsafe_b64encode(hashlib.sha256(_secret.encode()).digest
 ALLOWED_USERS = {u.strip() for u in os.environ.get("ALLOWED_SPOTIFY_USER_IDS", "").split(",") if u.strip()}
 ALLOWED_REDIRECTS = {u.strip() for u in os.environ.get(
     "ALLOWED_REDIRECTS",
+    "https://chatgpt.com/connector/oauth/i2SnEx4F2jQq,"
     "https://claude.ai/api/mcp/auth_callback,"
     "https://claude.com/api/mcp/auth_callback,"
     "https://chatgpt.com/api/mcp/auth_callback,"
